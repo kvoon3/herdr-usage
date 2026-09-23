@@ -1,0 +1,17 @@
+id = "kvoon.herdr-usage"
+name = "Usage"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Every pi provider's quota windows, balances, and errors in one popup"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["bun", "install", "--production"]
+
+[[panes]]
+id = "usage"
+title = "Usage"
+placement = "popup"
+width = "90%"
+height = "80%"
+command = ["bun", "run", "src/main.tsx"]
