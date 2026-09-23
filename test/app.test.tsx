@@ -73,23 +73,22 @@ test("renders each window of every configured provider", async () => {
   expect(frame).toContain("resets in 2h38m");
   expect(frame).toContain("WorkBuddy");
   expect(frame).toContain("$1090 / $1100 · 2/3 accounts");
-  expect(frame).toContain("r refresh · a hide empty · j/k focus · ↵ open · ↑↓ scroll · esc close");
+  expect(frame).toContain("r refresh · a show all · j/k focus · ↵ open · ↑↓ scroll · esc close");
 });
 
-test("lists every provider by default, configured or not", async () => {
+test("unconfigured providers stay hidden but are counted", async () => {
   const setup = await render();
   const frame = await setup.waitForFrame((value) => value.includes("Claude Max"));
-  expect(frame).toContain("12 providers");
-  expect(frame).toContain("showing all");
-  expect(frame).toContain("GitHub Copilot");
-  expect(frame).toContain("Not configured");
+  expect(frame).toContain("2 providers · 10 unconfigured");
+  expect(frame).not.toContain("GitHub Copilot");
+  expect(frame).not.toContain("Not configured");
 });
 
 test("the first provider is focused and marked", async () => {
   const setup = await render();
   const frame = await setup.waitForFrame((value) => value.includes("Claude Max"));
   expect(frame).toContain("▸ Claude Max");
-  expect(frame).toContain("  OpenAI Codex");
+  expect(frame).toContain("  WorkBuddy");
 });
 
 /**

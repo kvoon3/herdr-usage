@@ -2,7 +2,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { For, createMemo, createSignal, onCleanup } from "solid-js";
 import { PROVIDERS, openPage, providerPage, type Loaded, type Loader } from "./providers.ts";
 import type { Theme } from "./theme.ts";
-import { buildRows, keyCommand, relativeTime, rowLineRange, toLines, type Cell, type Line, type ProviderRow } from "./view.ts";
+import { NO_AUTH, buildRows, keyCommand, relativeTime, rowLineRange, toLines, type Cell, type Line, type ProviderRow } from "./view.ts";
 
 const HINTS_TAIL = "j/k focus · ↵ open · ↑↓ scroll · esc close";
 
@@ -22,7 +22,7 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
   const theme = props.theme;
   const [loaded, setLoaded] = createSignal<Loaded[]>([]);
   const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set(PROVIDERS));
-  const [showAll, setShowAll] = createSignal(true);
+  const [showAll, setShowAll] = createSignal(false);
   const [now, setNow] = createSignal(Date.now());
   const [scroll, setScroll] = createSignal(0);
   const [focused, setFocused] = createSignal(0);
@@ -96,8 +96,11 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
   );
   const header = createMemo(() => {
     const fetched = fetchedAt();
+    // Say what is hidden, so `a` is discoverable without a wall of "Not configured" rows.
+    const unconfigured = loaded().filter((entry) => entry.snapshot.error === NO_AUTH).length;
     return [
       `${lines().filter((line) => line.kind === "title").length} providers`,
+      !showAll() && unconfigured ? `${unconfigured} unconfigured` : "",
       fetched === undefined ? "loading…" : relativeTime(fetched, now()),
       showAll() ? "showing all" : "",
     ]
