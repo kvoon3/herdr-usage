@@ -1,29 +1,31 @@
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { For, createMemo, createSignal, onCleanup } from "solid-js";
-import { PROVIDERS, type Loaded, type Loader } from "./providers.ts";
+import { PROVIDERS, openPage, providerPage, type Loaded, type Loader } from "./providers.ts";
 import type { Theme } from "./theme.ts";
-import { buildRows, keyCommand, relativeTime, toLines, type Cell, type Line, type ProviderRow } from "./view.ts";
+import { buildRows, keyCommand, relativeTime, rowLineRange, toLines, type Cell, type Line, type ProviderRow } from "./view.ts";
 
-const HINTS = "r refresh · a show all · ↑↓ scroll · esc close";
+const HINTS_TAIL = "j/k focus · ↵ open · ↑↓ scroll · esc close";
 
 /** Rows the frame spends on chrome: two padding rows, the header, and the hint line. */
 const CHROME_ROWS = 5;
 
 /**
- * @opentui/solid types `span` without the TextNodeOptions its renderable takes, so `fg` fails
- * the props type even though the renderable accepts it. Spreading clears the excess-property check.
+ * Inline text nodes only take color through `style`: the solid reconciler drops a bare `fg`
+ * prop on `span`/`b`/`i` silently, which paints them white. It also types those props away,
+ * so the spread keeps the workaround in one place.
  */
 function paint(fg: string) {
-  return { fg };
+  return { style: { fg } };
 }
 
 export function App(props: { theme: Theme; load: Loader; close: () => void }) {
   const theme = props.theme;
   const [loaded, setLoaded] = createSignal<Loaded[]>([]);
   const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set(PROVIDERS));
-  const [showAll, setShowAll] = createSignal(false);
+  const [showAll, setShowAll] = createSignal(true);
   const [now, setNow] = createSignal(Date.now());
   const [scroll, setScroll] = createSignal(0);
+  const [focused, setFocused] = createSignal(0);
   let generation = 0;
 
   async function refresh() {
@@ -52,16 +54,17 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
 
   const dimensions = useTerminalDimensions();
   const page = createMemo(() => Math.max(1, dimensions().height - CHROME_ROWS));
-  const lines = createMemo(() =>
-    toLines(
-      buildRows(PROVIDERS, loaded(), {
-        showAll: showAll(),
-        now: now(),
-        barWidth: Math.max(8, Math.min(24, dimensions().width - 44)),
-        pending: pending(),
-      }),
-    ),
+  const rows = createMemo(() =>
+    buildRows(PROVIDERS, loaded(), {
+      showAll: showAll(),
+      now: now(),
+      barWidth: Math.max(8, Math.min(24, dimensions().width - 44)),
+      pending: pending(),
+    }),
   );
+  const focusIndex = createMemo(() => Math.min(focused(), Math.max(0, rows().length - 1)));
+  const focusedRow = createMemo(() => rows()[focusIndex()]);
+  const lines = createMemo(() => toLines(rows(), focusedRow()?.id));
   const maxScroll = createMemo(() => Math.max(0, lines().length - page()));
   const start = createMemo(() => Math.min(scroll(), maxScroll()));
   const viewport = createMemo(() => lines().slice(start(), start() + page()));
@@ -69,6 +72,20 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
 
   function scrollBy(delta: number) {
     setScroll(Math.max(0, Math.min(maxScroll(), start() + delta)));
+  }
+
+  /** j/k walk the providers; the view follows so the focused block is always on screen. */
+  function focusBy(delta: number) {
+    const next = Math.max(0, Math.min(rows().length - 1, focusIndex() + delta));
+    setFocused(next);
+    const { start: first, end: last } = rowLineRange(rows(), next);
+    if (first < start()) setScroll(first);
+    else if (last > start() + page() - 1) setScroll(Math.min(maxScroll(), last - page() + 1));
+  }
+
+  function openFocused() {
+    const page = focusedRow() && providerPage(focusedRow()!.id);
+    if (page) openPage(page);
   }
 
   const fetchedAt = createMemo(() =>
@@ -111,6 +128,15 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
       case "page-down":
         scrollBy(page());
         break;
+      case "focus-next":
+        focusBy(1);
+        break;
+      case "focus-previous":
+        focusBy(-1);
+        break;
+      case "open":
+        openFocused();
+        break;
     }
   });
 
@@ -134,7 +160,7 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
       <For each={viewport()}>{(line) => <LineRow theme={theme} line={line} />}</For>
       <text {...paint(theme.muted)}>
         {" "}
-        {HINTS}
+        {`r refresh · a ${showAll() ? "hide empty" : "show all"} · ${HINTS_TAIL}`}
         {indicators().trim() ? `   ${indicators()}` : ""}
       </text>
     </box>
@@ -143,14 +169,16 @@ export function App(props: { theme: Theme; load: Loader; close: () => void }) {
 
 function LineRow(props: { theme: Theme; line: Line }) {
   if (props.line.kind === "blank") return <text> </text>;
-  if (props.line.kind === "title") return <TitleLine theme={props.theme} row={props.line.row} />;
+  if (props.line.kind === "title") return <TitleLine theme={props.theme} row={props.line.row} selected={props.line.selected} />;
   return <CellLine theme={props.theme} cell={props.line.cell} />;
 }
 
-function TitleLine(props: { theme: Theme; row: ProviderRow }) {
+function TitleLine(props: { theme: Theme; row: ProviderRow; selected: boolean }) {
+  const name = () => (props.selected ? props.theme.accent : props.row.hidden ? props.theme.muted : props.theme.text);
   return (
     <text>
-      <span {...paint(props.row.hidden ? props.theme.muted : props.theme.text)}>
+      <span {...paint(props.selected ? props.theme.accent : props.theme.muted)}>{props.selected ? "▸ " : "  "}</span>
+      <span {...paint(name())}>
         <b>{props.row.name}</b>
       </span>
       <span {...paint(props.theme.muted)}> {props.row.meta}</span>

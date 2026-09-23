@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RateWindow, UsageSnapshot } from "@kvoon/pi-minimal-footer/usage.ts";
-import { providerName, type Loaded } from "../src/providers.ts";
+import { PROVIDERS, providerName, providerPage, type Loaded } from "../src/providers.ts";
 import {
   buildRows,
   clampPercent,
@@ -11,7 +11,9 @@ import {
   percentText,
   relativeTime,
   resetText,
+  rowLineRange,
   safeError,
+  toLines,
 } from "../src/view.ts";
 
 const NOW = 1_700_000_000_000;
@@ -64,8 +66,25 @@ describe("key handling", () => {
     expect(keyCommand("a")).toBe("show-all");
     expect(keyCommand("down")).toBe("scroll-down");
     expect(keyCommand("pageup")).toBe("page-up");
+    expect(keyCommand("j")).toBe("focus-next");
+    expect(keyCommand("k")).toBe("focus-previous");
+    expect(keyCommand("return")).toBe("open");
+    expect(keyCommand("enter")).toBe("open");
     expect(keyCommand("x")).toBeUndefined();
-    expect(keyCommand("return")).toBeUndefined();
+    expect(keyCommand("tab")).toBeUndefined();
+  });
+});
+
+describe("provider pages", () => {
+  test("every provider has a page except the local gateway", () => {
+    for (const id of PROVIDERS) {
+      const page = providerPage(id);
+      if (id === "workbuddy") {
+        expect(page).toBeUndefined();
+        continue;
+      }
+      expect(page).toMatch(/^https:\/\//);
+    }
   });
 });
 
@@ -157,6 +176,32 @@ describe("rows", () => {
     const rows = buildRows(["claude"], [snapshot("claude", [], { error: "HTTP 429" })], options);
     expect(rows[0]!.cells).toEqual([{ kind: "note", text: "HTTP 429", color: "red" }]);
     expect(rows[0]!.hidden).toBe(false);
+  });
+
+  test("lines mark the focused provider and can locate its block", () => {
+    const loaded = [
+      snapshot("claude", [quota("5h", 10), quota("Week", 20)]),
+      snapshot("codex", [quota("5h", 30)]),
+      snapshot("workbuddy", [{ label: "credits", usedPercent: 0.9, credits: { remain: 1, size: 2, accounts: 1, okAccounts: 1 } }]),
+    ];
+    const rows = buildRows(["claude", "codex", "workbuddy"], loaded, options);
+    const lines = toLines(rows, "codex");
+
+    expect(lines.map((line) => (line.kind === "title" ? `${line.selected ? "*" : " "}${line.row.id}` : "·"))).toEqual([
+      " claude",
+      "·",
+      "·",
+      "·",
+      "*codex",
+      "·",
+      "·",
+      " workbuddy",
+      "·",
+    ]);
+    // claude owns 4 lines (title + 2 windows + blank), codex the next 3.
+    expect(rowLineRange(rows, 0)).toEqual({ start: 0, end: 2 });
+    expect(rowLineRange(rows, 1)).toEqual({ start: 4, end: 5 });
+    expect(rowLineRange(rows, 2)).toEqual({ start: 7, end: 8 });
   });
 
   test("a provider missing from the payload keeps its canonical slot", () => {

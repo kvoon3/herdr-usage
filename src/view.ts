@@ -114,7 +114,7 @@ export function isMoneyWindow(window: RateWindow): boolean {
 }
 
 export type Line =
-  | { kind: "title"; row: ProviderRow }
+  | { kind: "title"; row: ProviderRow; selected: boolean }
   | { kind: "cell"; row: ProviderRow; cell: Cell }
   | { kind: "blank" };
 
@@ -122,17 +122,35 @@ export type Line =
  * Provider blocks flattened to one entry per terminal row. The popup windows this list itself:
  * opentui's scrollbox draws overflowing content over its siblings, header included.
  */
-export function toLines(rows: ProviderRow[]): Line[] {
+export function toLines(rows: ProviderRow[], selectedId?: string): Line[] {
   const lines: Line[] = [];
   rows.forEach((row, index) => {
     if (index > 0) lines.push({ kind: "blank" });
-    lines.push({ kind: "title", row });
+    lines.push({ kind: "title", row, selected: row.id === selectedId });
     for (const cell of row.cells) lines.push({ kind: "cell", row, cell });
   });
   return lines;
 }
 
-export type KeyCommand = "close" | "refresh" | "show-all" | "scroll-up" | "scroll-down" | "page-up" | "page-down";
+/** Which lines a provider's block owns, so focusing it can scroll it into view. */
+export function rowLineRange(rows: ProviderRow[], index: number): { start: number; end: number } {
+  let start = 0;
+  // Each block is a title, its cells, and the blank line that separates it from the next one.
+  for (let i = 0; i < index; i++) start += 2 + rows[i]!.cells.length;
+  return { start, end: start + rows[index]!.cells.length };
+}
+
+export type KeyCommand =
+  | "close"
+  | "refresh"
+  | "show-all"
+  | "scroll-up"
+  | "scroll-down"
+  | "page-up"
+  | "page-down"
+  | "focus-next"
+  | "focus-previous"
+  | "open";
 
 /** Keys the popup answers to; anything else is left to the terminal. */
 export function keyCommand(name: string): KeyCommand | undefined {
@@ -152,6 +170,13 @@ export function keyCommand(name: string): KeyCommand | undefined {
       return "page-up";
     case "pagedown":
       return "page-down";
+    case "j":
+      return "focus-next";
+    case "k":
+      return "focus-previous";
+    case "return":
+    case "enter":
+      return "open";
     default:
       return undefined;
   }

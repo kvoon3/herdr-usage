@@ -34,7 +34,7 @@ const loader: Loader = async (ids, onEach) =>
     }),
   );
 
-/** Ten windows per provider: more rows than any fixture frame can hold. */
+/** Four windows per provider: more rows than a short fixture frame can hold. */
 const crowded: Loader = async (ids, onEach) =>
   Promise.all(
     ids.map(async (id) => {
@@ -49,8 +49,21 @@ const crowded: Loader = async (ids, onEach) =>
     }),
   );
 
-function render(load: Loader = loader, height = 30) {
+function render(load: Loader = loader, height = 44) {
   return testRender(() => <App theme={fallbackTheme} load={load} close={() => {}} />, { width: 90, height });
+}
+
+type Setup = Awaited<ReturnType<typeof render>>;
+
+function hex(color: { buffer: Record<number, number> }): string {
+  return `#${[0, 1, 2].map((index) => color.buffer[index]!.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function coloredSpans(setup: Setup) {
+  return setup
+    .captureSpans()
+    .lines.flatMap((line) => line.spans)
+    .filter((span) => span.text.trim());
 }
 
 test("renders each window of every configured provider", async () => {
@@ -60,14 +73,46 @@ test("renders each window of every configured provider", async () => {
   expect(frame).toContain("resets in 2h38m");
   expect(frame).toContain("WorkBuddy");
   expect(frame).toContain("$1090 / $1100 · 2/3 accounts");
-  expect(frame).toContain("r refresh · a show all · ↑↓ scroll · esc close");
+  expect(frame).toContain("r refresh · a hide empty · j/k focus · ↵ open · ↑↓ scroll · esc close");
 });
 
-test("unauthenticated providers stay hidden", async () => {
+test("lists every provider by default, configured or not", async () => {
   const setup = await render();
   const frame = await setup.waitForFrame((value) => value.includes("Claude Max"));
-  expect(frame).not.toContain("GitHub Copilot");
-  expect(frame).not.toContain("Not configured");
+  expect(frame).toContain("12 providers");
+  expect(frame).toContain("showing all");
+  expect(frame).toContain("GitHub Copilot");
+  expect(frame).toContain("Not configured");
+});
+
+test("the first provider is focused and marked", async () => {
+  const setup = await render();
+  const frame = await setup.waitForFrame((value) => value.includes("Claude Max"));
+  expect(frame).toContain("▸ Claude Max");
+  expect(frame).toContain("  OpenAI Codex");
+});
+
+/**
+ * Inline text nodes ignore a bare `fg` prop, which once painted every bar and provider name
+ * white on a light background. Assert on the captured span colors, not on the text.
+ */
+test("every span carries a theme color", async () => {
+  const setup = await render();
+  await setup.waitForFrame((value) => value.includes("Claude Max"));
+
+  const allowed = new Set(Object.values(fallbackTheme).map((value) => value.toLowerCase()));
+  const painted = coloredSpans(setup);
+  expect(painted.length).toBeGreaterThan(10);
+  for (const span of painted) {
+    expect(allowed.has(hex(span.fg))).toBe(true);
+  }
+
+  const title = painted.find((span) => span.text.includes("provider usage"));
+  expect(hex(title!.fg)).toBe(fallbackTheme.accent);
+  const bar = painted.find((span) => span.text.includes("█"));
+  expect(hex(bar!.fg)).toBe(fallbackTheme.green);
+  const muted = painted.find((span) => span.text.includes("resets in 2h38m"));
+  expect(hex(muted!.fg)).toBe(fallbackTheme.muted);
 });
 
 /**
