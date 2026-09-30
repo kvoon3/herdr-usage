@@ -9,7 +9,7 @@
     "start": "bun run src/main.tsx"
   },
   "dependencies": {
-    "@kvoon/pi-minimal-footer": "^0.4.3",
+    "@kvoon/pi-minimal-footer": "file:../pi-extensions/pi-minimal-footer",
     "@opentui/core": "0.5.11",
     "@opentui/solid": "0.5.11",
     "solid-js": "1.9.12"
